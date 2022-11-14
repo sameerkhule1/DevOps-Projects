@@ -1,0 +1,58 @@
+---
+- hosts: web
+  become: true
+  
+  vars:
+    domain_name: "cgi-challenge1.westeurope.cloudapp.azure.com"
+    letsencrypt_email: "sameerkhule@gmail.com"
+    msg: "Hello CGI world!" 
+    title_msg: "Welcome to CGI home page!"
+
+  tasks:
+    - name: Upgrade system
+      apt: upgrade=dist update_cache=yes
+    
+    - name: Install nginx
+      apt: name=nginx state=latest
+    
+    - name: template index file
+      template:
+        src: /home/sameer/ansible/index.j2
+        dest: /var/www/html/index.html
+           
+    - name: Copy new config file (server_names_hash_bucket_size 512)
+      copy:
+        src: /home/sameer/ansible/nginx.conf
+        dest: /etc/nginx/nginx.conf
+
+    - name: Install certbot
+      snap:
+        name: certbot
+        classic: yes
+
+    - name: install certbot nginx plugin
+      apt: 
+        name: python3-certbot-nginx
+        state: present
+    
+    - name: Check if certificate already exists
+      stat:
+        path: "/etc/letsencrypt/live/{{ domain_name }}/cert.pem"
+      register: letsencrypt_cert
+
+    - name: Generate new certificate if one doesn't exist
+      shell: >
+        sudo certbot certonly --nginx --email '{{ letsencrypt_email }}'
+        --agree-tos -d '{{ domain_name }}'
+      when: not letsencrypt_cert.stat.exists
+
+    - name: Install nginx site for letsencrypt requests
+      template:
+        src: default.j2
+        dest: /etc/nginx/sites-enabled/default
+
+    - name: Reload nginx to activate specified site
+      service:
+        name: nginx
+        state: restarted 
+
